@@ -19,63 +19,48 @@ app.get('/api/user-gamepasses/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
         
-        // Validate userId
-        if (!userId || isNaN(userId)) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Invalid user ID' 
-            });
-        }
-        
-        console.log(`Fetching gamepasses for user: ${userId}`);
-        
         // Get user's games
-        const gamesResponse = await axios.get(
-            `https://games.roblox.com/v2/users/${userId}/games?limit=50&sortOrder=Asc`
+        const gamesResponse = await robloxAPI.get(
+            `https://games.roblox.com/v2/users/${userId}/games?limit=50`
         );
         
-        const games = gamesResponse.data.data;
         const result = [];
         
-        // Get gamepasses for each game
-        for (const game of games) {
+        for (const game of gamesResponse.data.data) {
             try {
-                const passesResponse = await axios.get(
-                    `https://games.roblox.com/v1/games/${game.id}/game-passes?limit=100&sortOrder=Asc`
+                // Try using catalog API instead
+                const catalogUrl = `https://catalog.roblox.com/v1/search/items/details`;
+                
+                const catalogResponse = await robloxAPI.post(catalogUrl, {
+                    itemIds: [],
+                    keyword: "",
+                    limit: 100,
+                    creatorTargetId: game.creator.id,
+                    creatorType: game.creator.type
+                });
+                
+                // Filter for passes only
+                const passes = catalogResponse.data.data.filter(item => 
+                    item.itemType === "GamePass"
                 );
                 
-                if (passesResponse.data.data.length > 0) {
+                if (passes.length > 0) {
                     result.push({
                         gameId: game.id,
                         gameName: game.name,
-                        rootPlaceId: game.rootPlaceId,
-                        gamepasses: passesResponse.data.data.map(pass => ({
-                            id: pass.id,
-                            name: pass.name,
-                            displayName: pass.displayName,
-                            price: pass.price
-                        }))
+                        gamepasses: passes
                     });
                 }
+                
             } catch (error) {
-                console.error(`Error fetching passes for game ${game.id}:`, error.message);
+                console.log(`Error for game ${game.id}:`, error.message);
             }
         }
         
-        res.json({ 
-            success: true, 
-            userId: parseInt(userId),
-            gamesChecked: games.length,
-            gamesWithPasses: result.length,
-            data: result 
-        });
+        res.json({ success: true, data: result });
         
     } catch (error) {
-        console.error('Error:', error.message);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
